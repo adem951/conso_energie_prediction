@@ -1,2 +1,6 @@
 [core]
     no_scm = True
+    remote = dagshub
+['remote "dagshub"']
+    url = https://dagshub.com/adem.debbahi/conso_energie_prediction.dvc
+    auth = basic

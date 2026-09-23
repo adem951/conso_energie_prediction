@@ -9,3 +9,4 @@ mlflow
 jupyter
 ipykernel
 dvc
+streamlit

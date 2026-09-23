@@ -7,6 +7,7 @@ mlruns/
 *.pyc
 .dvc/cache/
 .dvc/tmp/
+.dvc/config.local
 data/*.csv
 notebooks/ci_output/
 notebooks/executed/

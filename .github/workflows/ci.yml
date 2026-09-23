@@ -19,8 +19,11 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --upgrade pip && pip install -r requirements.txt
 
-      - name: Validate notebooks
-        run: python -m nbconvert --to notebook --execute notebooks/02_features_split_temporel.ipynb --output-dir notebooks/ci_output
+      - name: Check Python sources
+        run: python -m compileall src app.py
 
       - name: Check DVC pipeline definition
         run: dvc dag
+
+      - name: Build Streamlit image
+        run: docker build --tag conso-energie-streamlit .

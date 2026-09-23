@@ -1,9 +1,16 @@
 stages:
   prepare_data:
-    cmd: jupyter nbconvert --to notebook --execute notebooks/01_eda_preparation_consommation.ipynb --output-dir notebooks/executed
+    cmd: python -m src.prepare_data
     deps:
       - data/eco2mix-regional-cons-def.csv
-      - notebooks/01_eda_preparation_consommation.ipynb
+      - src/prepare_data.py
     outs:
       - data/eco2mix.csv
       - data/eco2mix_regional.csv
+
+  train:
+    cmd: python -m src.train
+    deps:
+      - data/eco2mix.csv
+      - src/features.py
+      - src/train.py
