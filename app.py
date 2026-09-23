@@ -51,7 +51,7 @@ def connect_mlflow() -> bool:
     return True
 
 
-@st.cache_resource
+@st.cache_resource(ttl=3600)  # une promotion en production atteint l'app en moins d'une heure
 def load_production_model():
     if not connect_mlflow():
         return None, None, "MLflow non configuré : vérifiez MLFLOW_TRACKING_URI dans les secrets Streamlit."

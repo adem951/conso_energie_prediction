@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import UTC, datetime
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import mlflow
 
@@ -39,7 +40,7 @@ def promote() -> bool:
         return False
 
     mlflow.MlflowClient().set_registered_model_alias(MODEL_NAME, "production", staging["version"])
-    record(staging["version"], f"@production depuis le {datetime.now(UTC):%d/%m/%Y}")
+    record(staging["version"], f"@production depuis le {datetime.now(ZoneInfo('Europe/Paris')):%d/%m/%Y}")
     if production:
         record(production["version"], f"ancienne production, remplacée par v{staging['version']}")
     previous = f"v{production['version']} (RMSE {production['rmse']:.0f})" if production else "aucune"

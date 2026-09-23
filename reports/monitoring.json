@@ -1,11 +1,11 @@
 {
   "window": "2026-08-26 \u2192 2026-09-23",
-  "model_version": "1",
-  "psi": 0.04551760531727412,
+  "model_version": "5",
+  "psi": 0.04578975371772159,
   "ks_pvalue": 0.011177790522580746,
-  "mae_recent": 852.2170662717587,
-  "mae_last_week": 955.4698649942977,
-  "mae_reference": 1161.3854107838727,
+  "mae_recent": 814.0693242508731,
+  "mae_last_week": 776.0691688197603,
+  "mae_reference": 1026.7991914459733,
   "data_drift": false,
   "model_drift": false
 }

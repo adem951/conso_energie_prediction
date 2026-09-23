@@ -29,8 +29,8 @@ stages:
       size: 8279732
     - path: data/recent.csv
       hash: md5
-      md5: 469575f9dd3ee9643ffbd419ebf32ff8
-      size: 142757
+      md5: 47dee7326c62e32dbe8f54b5544b72b2
+      size: 142897
     - path: src/features.py
       hash: md5
       md5: e8f6d55b793e18f879ac672f339589ec
@@ -41,14 +41,14 @@ stages:
       size: 1570
     - path: src/train.py
       hash: md5
-      md5: b4591cd1a775ef5c456d81a7b7c40fc7
-      size: 7106
+      md5: 704ad9ff2c49afdfd6642ff4f3246103
+      size: 9561
     params:
       params.yaml:
         lightgbm:
           learning_rate: 0.05
           n_estimators: 2000
-          num_leaves: 15
+          num_leaves: 127
           min_child_samples: 100
           colsample_bytree: 0.9
           reg_lambda: 0.0
@@ -59,12 +59,12 @@ stages:
     outs:
     - path: reports/model_comparison.png
       hash: md5
-      md5: 78fbb21fad2762802b50073922392384
-      size: 18908
+      md5: 8fddd0da2dd606e0d86637470436481e
+      size: 33287
     - path: reports/train_metrics.json
       hash: md5
-      md5: 72e313b47e97830345a39e78385f4f1e
-      size: 1428
+      md5: 3760459278af0e3d5627ff14cb1eeddb
+      size: 1424
   fetch_recent:
     cmd: python -m src.data
     deps:
@@ -79,29 +79,29 @@ stages:
     outs:
     - path: data/recent.csv
       hash: md5
-      md5: 469575f9dd3ee9643ffbd419ebf32ff8
-      size: 142757
+      md5: 47dee7326c62e32dbe8f54b5544b72b2
+      size: 142897
   evaluate:
     cmd: python -m src.evaluate
     deps:
     - path: reports/train_metrics.json
       hash: md5
-      md5: 72e313b47e97830345a39e78385f4f1e
-      size: 1428
+      md5: 3760459278af0e3d5627ff14cb1eeddb
+      size: 1424
     - path: src/evaluate.py
       hash: md5
-      md5: f4b255f8cab7f74a0d7d98375eec3ce3
-      size: 3725
+      md5: eb720e786a6e1ec206d868a7f748e929
+      size: 3766
     outs:
     - path: reports/error_by_hour.png
       hash: md5
-      md5: d919d7b3f4a924e1c148b56689e90968
-      size: 19061
+      md5: f9f85bb5c782e64cc85307f9cde40932
+      size: 28711
     - path: reports/evaluation.json
       hash: md5
-      md5: 90d248e0d39a9c36599090e0447b63b3
-      size: 371
+      md5: 954b382fd5c23774bb373a490306587d
+      size: 372
     - path: reports/forecast_test.png
       hash: md5
-      md5: cb50d2b29fb8a108729e52428d5a1027
-      size: 96744
+      md5: 3c18fd6153543a7afcc7bbb5f38fa240
+      size: 152967

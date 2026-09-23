@@ -79,14 +79,22 @@ Les notebooks racontent la démarche dans l'ordre et importent le code de `src/`
 
 | Modèle | RMSE train | RMSE validation | RMSE test | MAE test | R² test |
 |---|---|---|---|---|---|
-| Naïf 24 h | 4 239 | 3 619 | 3 437 | 2 307 | 0,66 |
-| Naïf 7 jours | 5 092 | 3 116 | 2 791 | 2 130 | 0,78 |
-| Régression linéaire | 2 701 | 2 047 | 1 872 | 1 404 | 0,90 |
-| **LightGBM** | 1 778 | 1 462 | **1 460** | **1 094** | **0,94** |
+| Naïf 24 h | 4 239 | 3 617 | 3 437 | 2 307 | 0,66 |
+| Naïf 7 jours | 5 092 | 3 124 | 2 787 | 2 127 | 0,78 |
+| Régression linéaire | 2 701 | 2 047 | 1 871 | 1 403 | 0,90 |
+| **LightGBM (v5, @production)** | 1 496 | 1 444 | **1 404** | **1 027** | **0,94** |
 
 La RMSE train est plus élevée que la validation car le train contient tous les hivers (consommation et erreurs absolues plus fortes) ; la comparaison à périodes égales se fait par validation croisée (notebook 04).
 
-La v2 entraînée par ce pipeline (RMSE 1 460) n'a **pas** été promue : la v1 en production fait 1 421 sur le même test. La règle champion / challenger a joué son rôle.
+Historique du registre, tous évalués sur le même test :
+
+| Version | Réglage LightGBM | RMSE test | Décision |
+|---|---|---|---|
+| v1 | `num_leaves=31, min_child_samples=20` (ancien script) | 1 421 | production initiale, remplacée par v5 |
+| v2 – v4 | `15 / 100` (tuning validé sur l'hiver seulement) | 1 456 – 1 460 | refusées par la promotion automatique |
+| **v5** | `127 / 100` (tuning validé sur une année complète) | **1 404** | **promue `@production`** |
+
+La promotion champion / challenger a bloqué les modèles issus d'un tuning biaisé ; l'analyse (données vs paramètres) a identifié la cause, le protocole a été corrigé (notebook 04) et le modèle suivant a été promu automatiquement par la CI.
 
 ![Comparaison des modèles](reports/model_comparison.png)
 ![Prévision sur le test](reports/forecast_test.png)
