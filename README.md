@@ -61,7 +61,7 @@ Les notebooks racontent la démarche dans l'ordre et importent le code de `src/`
 | [01_exploration](notebooks/01_exploration.ipynb) | À quoi ressemble la consommation ? | saisonnalités jour / semaine / année → calendrier en heure de Paris ; autocorrélation à 24 h et 7 j → lags |
 | [02_features_split](notebooks/02_features_split.ipynb) | Quelles variables, quel découpage ? | lags ≥ 24 h uniquement (pas de fuite en day-ahead) ; découpage chronologique train / validation / test |
 | [03_modelisation](notebooks/03_modelisation.ipynb) | Quel modèle ? | naïfs < régression linéaire < LightGBM ; choix sur la validation, pas sur le test |
-| [04_tuning_overfitting](notebooks/04_tuning_overfitting.ipynb) | Comment régler sans sur-apprendre ? | `TimeSeriesSplit`, grille loggée dans MLflow, courbes train / validation, early stopping → modèle le plus régularisé |
+| [04_tuning_overfitting](notebooks/04_tuning_overfitting.ipynb) | Comment régler sans sur-apprendre ? | `TimeSeriesSplit` en 6 plis couvrant une année, erreur par pli et par saison, courbes train / validation, early stopping ; un premier protocole biaisé vers l'hiver a été détecté et corrigé |
 | [05_analyse_erreurs](notebooks/05_analyse_erreurs.ipynb) | Où le modèle se trompe-t-il ? | jours fériés et lendemains → piste d'amélioration n°1 |
 | [06_drift](notebooks/06_drift.ipynb) | Quand réentraîner ? | référence saisonnière (même période N-1) ; seuil PSI calibré sur l'historique |
 
@@ -73,6 +73,7 @@ Les notebooks racontent la démarche dans l'ordre et importent le code de `src/`
 - **Régression linéaire** avec calendrier one-hot : modèle simple et interprétable, point de comparaison honnête.
 - **Contrôle du sur-apprentissage** : RMSE train / validation / test loggées pour chaque modèle, validation croisée temporelle, early stopping, `min_child_samples` élevé.
 - **Champion / challenger** : un nouveau modèle ne remplace la production que s'il fait mieux sur le même jeu de test.
+- **Tuning validé sur toutes les saisons** : un premier protocole (plis d'automne-hiver, taux d'apprentissage différent) avait choisi un modèle trop simple pour l'été. La promotion automatique l'a bloqué (v2, v3 refusées) ; en isolant données et paramètres, la cause a été trouvée et le protocole corrigé, sans choisir les paramètres sur le jeu de test.
 
 ### Résultats (test : 23/06 → 23/09/2026)
 
