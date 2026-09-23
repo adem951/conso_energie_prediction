@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -16,6 +18,7 @@ from src.features import FEATURE_COLUMNS, build_features
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_PATH = ROOT / "data" / "eco2mix.csv"
+METRICS_PATH = ROOT / "metrics.json"
 
 
 def calculate_metrics(actual: pd.Series, predicted: np.ndarray) -> dict[str, float]:
@@ -57,7 +60,6 @@ def train_production_model() -> dict[str, float]:
         "n_estimators": 1000,
         "num_leaves": 31,
         "max_depth": -1,
-        "subsample": 0.9,
         "colsample_bytree": 0.9,
         "random_state": 42,
         "verbosity": -1,
@@ -66,11 +68,17 @@ def train_production_model() -> dict[str, float]:
     model.fit(
         X_fit,
         y_fit,
-        eval_set=[(X_fit, y_fit), (X_validation, y_validation)],
-        eval_names=["train", "validation"],
+        eval_X=X_validation,
+        eval_y=y_validation,
         eval_metric="rmse",
         callbacks=[early_stopping(50, verbose=False)],
     )
+
+    # Référence naïve : demain ressemble à aujourd'hui (lag 24 h).
+    baseline_scores = calculate_metrics(y_test, test["lag_48"])
+    with mlflow.start_run(run_name="baseline_persistence_24h"):
+        mlflow.set_tag("stage", "baseline")
+        mlflow.log_metrics(baseline_scores)
 
     scores = calculate_metrics(y_test, model.predict(X_test))
     with mlflow.start_run(run_name="lightgbm_production_script"):
@@ -85,9 +93,12 @@ def train_production_model() -> dict[str, float]:
             mlflow.lightgbm.save_model(model, path=str(model_directory))
             mlflow.log_artifacts(str(model_directory), artifact_path="model")
 
-    print({"model": "lightgbm_production", **scores})
+    METRICS_PATH.write_text(json.dumps({"baseline": baseline_scores, "production": scores}, indent=2))
+    print({"baseline": baseline_scores, "production": scores})
     return scores
 
 
 if __name__ == "__main__":
+    # MLflow affiche des emojis : évite une erreur d'encodage dans la console Windows.
+    sys.stdout.reconfigure(encoding="utf-8")
     train_production_model()

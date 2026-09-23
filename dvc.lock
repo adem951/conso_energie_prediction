@@ -1,0 +1,42 @@
+schema: '2.0'
+stages:
+  prepare_data:
+    cmd: python -m src.prepare_data
+    deps:
+    - path: data/eco2mix-regional-cons-def.csv
+      hash: md5
+      md5: 5defb9f3b612df828dfc0a5f7a3fa94f
+      size: 457355389
+    - path: src/prepare_data.py
+      hash: md5
+      md5: b087eaca42dcc6b3f606ec693e6f4c7b
+      size: 1574
+    outs:
+    - path: data/eco2mix.csv
+      hash: md5
+      md5: e4cbc5c0a8b48efc3ecd8f2fb0f4bf89
+      size: 8279732
+    - path: data/eco2mix_regional.csv
+      hash: md5
+      md5: 437973128a9b6df53445594250000093
+      size: 144122514
+  train:
+    cmd: python -m src.train
+    deps:
+    - path: data/eco2mix.csv
+      hash: md5
+      md5: e4cbc5c0a8b48efc3ecd8f2fb0f4bf89
+      size: 8279732
+    - path: src/features.py
+      hash: md5
+      md5: ddb1e8b0c84a7c5e4b86cb216cd9741b
+      size: 1201
+    - path: src/train.py
+      hash: md5
+      md5: 7631c24b205d519497ac366314341138
+      size: 3995
+    outs:
+    - path: metrics.json
+      hash: md5
+      md5: 5f623804c5082b55df94f94399a8f14e
+      size: 239

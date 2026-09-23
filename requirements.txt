@@ -1,12 +1,7 @@
-pandas
-numpy
-matplotlib
-seaborn
-statsmodels
-scikit-learn
-lightgbm
-mlflow
-jupyter
-ipykernel
-dvc
-streamlit
+# Dépendances de l'application (installées par Streamlit Cloud)
+pandas==3.0.6
+numpy==2.5.3
+scikit-learn==1.9.1
+lightgbm==4.7.0
+mlflow==3.16.1
+streamlit==1.64.0

@@ -14,3 +14,6 @@ stages:
       - data/eco2mix.csv
       - src/features.py
       - src/train.py
+    metrics:
+      - metrics.json:
+          cache: false
