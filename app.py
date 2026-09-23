@@ -52,13 +52,13 @@ def load_production_model():
         return None, f"Expérience MLflow introuvable : {experiment_name}"
 
     client = mlflow.MlflowClient()
-    runs = client.search_runs(
+    runs = list(client.search_runs(
         experiment_ids=[experiment.experiment_id],
         filter_string="tags.stage = 'production'",
         order_by=["attributes.start_time DESC"],
         max_results=20,
-    )
-    if runs.empty:
+    ))
+    if not runs:
         return None, "Aucun run production trouvé dans MLflow."
 
     run_id = None
@@ -129,7 +129,21 @@ def load_mlflow_runs() -> pd.DataFrame:
     experiment = mlflow.get_experiment_by_name(experiment_name)
     if experiment is None:
         return pd.DataFrame()
-    return mlflow.search_runs(experiment_ids=[experiment.experiment_id], order_by=["start_time DESC"])
+    client = mlflow.MlflowClient()
+    runs = list(client.search_runs(
+        experiment_ids=[experiment.experiment_id],
+        order_by=["attributes.start_time DESC"],
+    ))
+    return pd.DataFrame([
+        {
+            "tags.stage": run.data.tags.get("stage"),
+            "metrics.rmse": run.data.metrics.get("rmse"),
+            "metrics.mae": run.data.metrics.get("mae"),
+            "metrics.r2": run.data.metrics.get("r2"),
+            "start_time": run.info.start_time,
+        }
+        for run in runs
+    ])
 
 
 model, model_error = load_production_model()
