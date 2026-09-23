@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 import mlflow
@@ -95,12 +96,45 @@ def forecast_next_day(model, history: pd.DataFrame) -> pd.DataFrame:
     })
 
 
+def forecast_one_half_hour(model, moment: datetime, lag_48: float, lag_96: float, lag_336: float) -> float:
+    """Predict a single half-hour (Paris time) from three past values."""
+    local = pd.Timestamp(moment).tz_localize("Europe/Paris", nonexistent="shift_forward", ambiguous=False)
+    row = pd.DataFrame([{
+        "hour": local.hour,
+        "minute": local.minute,
+        "dayofweek": local.dayofweek,
+        "month": local.month,
+        "dayofyear": local.dayofyear,
+        "lag_48": lag_48,
+        "lag_96": lag_96,
+        "lag_336": lag_336,
+    }])
+    return float(model.predict(row[FEATURE_COLUMNS])[0])
+
+
 model, model_error = load_production_model()
 if model_error:
     st.error(model_error)
     st.stop()
 
-tab_forecast, tab_performance = st.tabs(["Prévoir demain", "Performance modèle"])
+tab_quick, tab_forecast, tab_performance = st.tabs(
+    ["Prévision rapide", "Prévoir demain (48 demi-heures)", "Performance modèle"]
+)
+
+with tab_quick:
+    st.write("Choisissez une demi-heure et réglez la consommation observée au même moment les jours précédents.")
+    col_date, col_time = st.columns(2)
+    selected_date = col_date.date_input("Date (heure de Paris)", value=date.today() + timedelta(days=1))
+    selected_time = col_time.time_input("Heure", value=time(19, 0), step=1800)
+
+    lag_48 = st.slider("Consommation 24 h avant (MW)", 25000, 100000, 55000, step=500)
+    lag_96 = st.slider("Consommation 48 h avant (MW)", 25000, 100000, 55000, step=500)
+    lag_336 = st.slider("Consommation 7 jours avant (MW)", 25000, 100000, 55000, step=500)
+
+    prediction = forecast_one_half_hour(
+        model, datetime.combine(selected_date, selected_time), lag_48, lag_96, lag_336
+    )
+    st.metric(f"Prévision le {selected_date:%d/%m/%Y} à {selected_time:%H:%M}", f"{prediction:,.0f} MW".replace(",", " "))
 
 with tab_forecast:
     uploaded = st.file_uploader("Historique CSV (colonnes timestamp, consommation_mw)", type="csv")
@@ -114,16 +148,15 @@ with tab_forecast:
         forecast = forecast_next_day(model, history)
     except Exception as error:
         st.error(f"Prévision impossible : {error}")
-        st.stop()
-
-    chart = pd.concat([
-        history.assign(timestamp=pd.to_datetime(history["timestamp"], utc=True).dt.tz_convert("Europe/Paris"))
-               .set_index("timestamp")["consommation_mw"].rename("Historique (MW)"),
-        forecast.set_index("timestamp")["prediction_mw"].rename("Prévision (MW)"),
-    ], axis=1)
-    st.line_chart(chart)
-    st.dataframe(forecast, width="stretch", hide_index=True)
-    st.download_button("Télécharger les prévisions", forecast.to_csv(index=False), "previsions_24h.csv")
+    else:
+        chart = pd.concat([
+            history.assign(timestamp=pd.to_datetime(history["timestamp"], utc=True).dt.tz_convert("Europe/Paris"))
+                   .set_index("timestamp")["consommation_mw"].rename("Historique (MW)"),
+            forecast.set_index("timestamp")["prediction_mw"].rename("Prévision (MW)"),
+        ], axis=1)
+        st.line_chart(chart)
+        st.dataframe(forecast, width="stretch", hide_index=True)
+        st.download_button("Télécharger les prévisions", forecast.to_csv(index=False), "previsions_24h.csv")
 
 with tab_performance:
     runs = load_mlflow_runs()

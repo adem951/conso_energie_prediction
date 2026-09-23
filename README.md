@@ -85,7 +85,10 @@ MLFLOW_TRACKING_PASSWORD = "TON_TOKEN_DAGSHUB"
 MLFLOW_EXPERIMENT_NAME = "conso_energie_day_ahead"
 ```
 
-L'application charge le dernier run `stage=production`. Elle attend un CSV `timestamp,consommation_mw` couvrant au moins les 7 derniers jours ; sans fichier, elle utilise `exemples/historique_7_jours.csv`.
+L'application charge le dernier run `stage=production` et propose deux modes :
+
+- **Prévision rapide** : une date, une heure et trois curseurs (consommation 24 h, 48 h et 7 jours avant) pour prédire une demi-heure ;
+- **Prévoir demain** : les 48 demi-heures de demain à partir d'un CSV `timestamp,consommation_mw` couvrant les 7 derniers jours ; sans fichier, `exemples/historique_7_jours.csv` est utilisé.
 
 Pour lancer l'app en local : `streamlit run app.py`.
 
