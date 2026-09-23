@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 import mlflow
@@ -77,7 +78,12 @@ def train_production_model() -> dict[str, float]:
         mlflow.log_params(parameters)
         mlflow.log_param("best_iteration", model.best_iteration_)
         mlflow.log_metrics(scores)
-        mlflow.lightgbm.log_model(model, "model")
+        # Sauvegarde explicite pour garantir un artefact model/ compatible avec
+        # le chargement `runs:/<run_id>/model` utilisé par Streamlit.
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            model_directory = Path(temporary_directory) / "model"
+            mlflow.lightgbm.save_model(model, path=str(model_directory))
+            mlflow.log_artifacts(str(model_directory), artifact_path="model")
 
     print({"model": "lightgbm_production", **scores})
     return scores
