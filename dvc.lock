@@ -9,8 +9,8 @@ stages:
       size: 457355389
     - path: src/prepare_data.py
       hash: md5
-      md5: b087eaca42dcc6b3f606ec693e6f4c7b
-      size: 1574
+      md5: f8fa5cafb476ada56c31703ab810435e
+      size: 1572
     outs:
     - path: data/eco2mix.csv
       hash: md5
@@ -27,16 +27,81 @@ stages:
       hash: md5
       md5: e4cbc5c0a8b48efc3ecd8f2fb0f4bf89
       size: 8279732
+    - path: data/recent.csv
+      hash: md5
+      md5: 469575f9dd3ee9643ffbd419ebf32ff8
+      size: 142757
     - path: src/features.py
       hash: md5
-      md5: ddb1e8b0c84a7c5e4b86cb216cd9741b
-      size: 1201
+      md5: e8f6d55b793e18f879ac672f339589ec
+      size: 1323
+    - path: src/models.py
+      hash: md5
+      md5: 0f9a4e47753567fd0bbedc97a8e4344b
+      size: 1570
     - path: src/train.py
       hash: md5
-      md5: 7631c24b205d519497ac366314341138
-      size: 3995
+      md5: b4591cd1a775ef5c456d81a7b7c40fc7
+      size: 7106
+    params:
+      params.yaml:
+        lightgbm:
+          learning_rate: 0.05
+          n_estimators: 2000
+          num_leaves: 15
+          min_child_samples: 100
+          colsample_bytree: 0.9
+          reg_lambda: 0.0
+          early_stopping_rounds: 50
+        split:
+          test_months: 3
+          validation_months: 1
     outs:
-    - path: metrics.json
+    - path: reports/model_comparison.png
       hash: md5
-      md5: 5f623804c5082b55df94f94399a8f14e
-      size: 239
+      md5: 78fbb21fad2762802b50073922392384
+      size: 18908
+    - path: reports/train_metrics.json
+      hash: md5
+      md5: 72e313b47e97830345a39e78385f4f1e
+      size: 1428
+  fetch_recent:
+    cmd: python -m src.data
+    deps:
+    - path: data/eco2mix.csv
+      hash: md5
+      md5: e4cbc5c0a8b48efc3ecd8f2fb0f4bf89
+      size: 8279732
+    - path: src/data.py
+      hash: md5
+      md5: 26327b0d79dd0a21a62a2d0c232cbf44
+      size: 3484
+    outs:
+    - path: data/recent.csv
+      hash: md5
+      md5: 469575f9dd3ee9643ffbd419ebf32ff8
+      size: 142757
+  evaluate:
+    cmd: python -m src.evaluate
+    deps:
+    - path: reports/train_metrics.json
+      hash: md5
+      md5: 72e313b47e97830345a39e78385f4f1e
+      size: 1428
+    - path: src/evaluate.py
+      hash: md5
+      md5: f4b255f8cab7f74a0d7d98375eec3ce3
+      size: 3725
+    outs:
+    - path: reports/error_by_hour.png
+      hash: md5
+      md5: d919d7b3f4a924e1c148b56689e90968
+      size: 19061
+    - path: reports/evaluation.json
+      hash: md5
+      md5: 90d248e0d39a9c36599090e0447b63b3
+      size: 371
+    - path: reports/forecast_test.png
+      hash: md5
+      md5: cb50d2b29fb8a108729e52428d5a1027
+      size: 96744

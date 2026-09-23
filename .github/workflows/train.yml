@@ -1,0 +1,83 @@
+name: Entraînement
+
+on:
+  workflow_dispatch:
+  workflow_call:  # appelé par monitoring.yml en cas de dérive
+  push:
+    branches: [main]
+    paths: [params.yaml, src/data.py, src/features.py, src/models.py, src/train.py]
+
+env:
+  MLFLOW_TRACKING_URI: https://dagshub.com/adem.debbahi/conso_energie_prediction.mlflow
+  MLFLOW_TRACKING_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
+  MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+  MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT: "true"
+
+jobs:
+  data:
+    name: 1. Données (DVC + API RTE)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          dagshub-username: ${{ secrets.DAGSHUB_USERNAME }}
+          dagshub-token: ${{ secrets.DAGSHUB_TOKEN }}
+      - name: Historique consolidé (DVC)
+        run: dvc pull data/eco2mix.csv
+      - name: Données récentes (API RTE)
+        run: python -m src.data
+      - uses: actions/upload-artifact@v4
+        with:
+          name: data
+          path: data/*.csv
+
+  train:
+    name: 2. Entraînement et sélection
+    needs: data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v4
+        with:
+          name: data
+          path: data
+      - name: Entraîner les candidats → @staging
+        run: python -m src.train
+      - uses: actions/upload-artifact@v4
+        with:
+          name: train-reports
+          path: reports/
+
+  evaluate:
+    name: 3. Évaluation @staging vs @production
+    needs: train
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v4
+        with:
+          name: data
+          path: data
+      - name: Évaluer sur le jeu de test
+        run: python -m src.evaluate
+      - uses: actions/upload-artifact@v4
+        with:
+          name: evaluation-reports
+          path: reports/
+
+  promote:
+    name: 4. Promotion en production
+    needs: evaluate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v4
+        with:
+          name: evaluation-reports
+          path: reports
+      - name: Champion / challenger
+        run: python -m src.promote

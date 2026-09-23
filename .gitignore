@@ -4,6 +4,7 @@ __pycache__/
 mlflow.db
 mlruns/
 *.png
+!reports/*.png
 *.pyc
 .dvc/cache/
 .dvc/tmp/

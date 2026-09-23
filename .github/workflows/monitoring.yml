@@ -1,0 +1,43 @@
+name: Monitoring
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # chaque lundi à 6 h UTC
+  workflow_dispatch:
+
+env:
+  MLFLOW_TRACKING_URI: https://dagshub.com/adem.debbahi/conso_energie_prediction.mlflow
+  MLFLOW_TRACKING_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
+  MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+  MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT: "true"
+
+jobs:
+  monitor:
+    name: Dérive des données et du modèle
+    runs-on: ubuntu-latest
+    outputs:
+      retrain: ${{ steps.drift.outputs.retrain }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          dagshub-username: ${{ secrets.DAGSHUB_USERNAME }}
+          dagshub-token: ${{ secrets.DAGSHUB_TOKEN }}
+      - name: Historique consolidé (DVC)
+        run: dvc pull data/eco2mix.csv
+      - name: Données récentes (API RTE)
+        run: python -m src.data
+      - name: Contrôler la dérive
+        id: drift
+        run: python -m src.monitor
+      - uses: actions/upload-artifact@v4
+        with:
+          name: monitoring-reports
+          path: reports/
+
+  retrain:
+    name: Réentraînement (si dérive)
+    needs: monitor
+    if: needs.monitor.outputs.retrain == 'true'
+    uses: ./.github/workflows/train.yml
+    secrets: inherit

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pandas as pd
 
-
 # Tous les lags font au moins 24 h : les 48 demi-heures de demain
 # se prédisent d'un coup, uniquement à partir de valeurs déjà connues.
 LAGS = [48, 96, 336]
@@ -26,6 +25,8 @@ def build_features(data: pd.DataFrame) -> pd.DataFrame:
     frame["dayofweek"] = local_time.dt.dayofweek
     frame["month"] = local_time.dt.month
     frame["dayofyear"] = local_time.dt.dayofyear
+    calendar = ["hour", "minute", "dayofweek", "month", "dayofyear"]
+    frame[calendar] = frame[calendar].astype("int64")
 
     for lag in LAGS:
         frame[f"lag_{lag}"] = frame["consommation_mw"].shift(lag)

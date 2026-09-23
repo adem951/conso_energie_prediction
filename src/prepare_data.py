@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pandas as pd
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_PATH = ROOT / "data" / "eco2mix-regional-cons-def.csv"
 NATIONAL_PATH = ROOT / "data" / "eco2mix.csv"

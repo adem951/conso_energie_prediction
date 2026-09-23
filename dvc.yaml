@@ -8,12 +8,43 @@ stages:
       - data/eco2mix.csv
       - data/eco2mix_regional.csv
 
+  fetch_recent:
+    cmd: python -m src.data
+    always_changed: true  # nouvelles données RTE publiées en continu
+    deps:
+      - data/eco2mix.csv
+      - src/data.py
+    outs:
+      - data/recent.csv
+
   train:
     cmd: python -m src.train
     deps:
       - data/eco2mix.csv
+      - data/recent.csv
       - src/features.py
+      - src/models.py
       - src/train.py
+    params:
+      - split
+      - lightgbm
     metrics:
-      - metrics.json:
+      - reports/train_metrics.json:
+          cache: false
+    plots:
+      - reports/model_comparison.png:
+          cache: false
+
+  evaluate:
+    cmd: python -m src.evaluate
+    deps:
+      - reports/train_metrics.json
+      - src/evaluate.py
+    metrics:
+      - reports/evaluation.json:
+          cache: false
+    plots:
+      - reports/forecast_test.png:
+          cache: false
+      - reports/error_by_hour.png:
           cache: false

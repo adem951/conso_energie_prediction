@@ -1,44 +1,99 @@
-# Prévision de consommation électrique
+# Prévision de consommation électrique day-ahead
 
-MVP de prévision day-ahead de la consommation électrique France à pas de 30 minutes, à partir des données régionales RTE éCO2mix.
+Prévision des 48 demi-heures du lendemain de la consommation électrique France (RTE éCO2mix), avec une chaîne MLOps complète : données versionnées, entraînement traçable, registre de modèles, promotion automatique, surveillance de la dérive et réentraînement.
 
-## Objectif
-
-Prévoir les 48 demi-heures de demain en respectant strictement l'ordre temporel :
-
-- aucun mélange aléatoire des observations ;
-- les trois derniers mois sont conservés pour le test final ;
-- seuls des lags d'au moins 24 h sont utilisés (`lag_48` = 24 h, `lag_96` = 48 h, `lag_336` = 7 jours) : toute la journée de demain se prédit d'un coup, sans réutiliser ses propres prédictions ;
-- les variables calendaires sont calculées en heure de Paris ;
-- les variables de production ne sont pas utilisées comme features pour éviter la fuite de données.
+**Stack :** Python · pandas · scikit-learn · LightGBM · MLflow (DagsHub) · DVC (DagsHub) · GitHub Actions · Streamlit Cloud
 
 ## Architecture
 
-```text
-GitHub ──► Streamlit Cloud (app.py)
-                 │ charge le dernier run stage=production
-                 ▼
-DagsHub ── MLflow (runs, métriques, modèle)
-        └─ DVC    (données volumineuses)
+```mermaid
+flowchart LR
+    RTE[(API RTE<br/>temps réel)] --> DATA
+    DVC[(DVC · DagsHub<br/>historique consolidé)] --> DATA
+    DATA[src/data.py] --> TRAIN[src/train.py<br/>4 candidats]
+    TRAIN -->|meilleur en validation| STAGING[Registre MLflow<br/>@staging]
+    STAGING --> EVAL[src/evaluate.py<br/>staging vs production]
+    EVAL --> PROMOTE[src/promote.py<br/>champion / challenger]
+    PROMOTE -->|si meilleur| PROD[Registre MLflow<br/>@production]
+    PROD --> APP[Streamlit Cloud<br/>app.py]
+    PROD --> MONITOR[src/monitor.py<br/>chaque lundi]
+    RTE --> MONITOR
+    MONITOR -->|dérive détectée| TRAIN
 ```
+
+| Étape | Outil | Où le voir |
+|---|---|---|
+| Versionnage des données | DVC (historique) + instantané des données récentes loggé dans MLflow | `dvc.lock`, onglet *Artifacts* du run `training` |
+| Suivi des expériences | MLflow : run parent `training`, un run enfant par modèle | DagsHub → Experiments |
+| Registre de modèles | alias `@staging` / `@production`, tags `data_version`, `git_commit`, `val_rmse`, `test_rmse` | DagsHub → Models |
+| Paramètres | `params.yaml`, suivi par DVC (`dvc params diff`) | |
+| CI | lint → tests → pipeline DVC | GitHub → Actions → *CI* |
+| Entraînement continu | données → entraînement → évaluation → promotion | GitHub → Actions → *Entraînement* |
+| Monitoring | PSI, KS, MAE hebdomadaire ; déclenche l'entraînement en cas de dérive | GitHub → Actions → *Monitoring*, onglet *Monitoring drift* de l'app |
+
+## Démarche data science
+
+Les notebooks racontent la démarche dans l'ordre et importent le code de `src/` (aucun code dupliqué) :
+
+| Notebook | Question | Décision |
+|---|---|---|
+| [01_exploration](notebooks/01_exploration.ipynb) | À quoi ressemble la consommation ? | saisonnalités jour / semaine / année → calendrier en heure de Paris ; autocorrélation à 24 h et 7 j → lags |
+| [02_features_split](notebooks/02_features_split.ipynb) | Quelles variables, quel découpage ? | lags ≥ 24 h uniquement (pas de fuite en day-ahead) ; découpage chronologique train / validation / test |
+| [03_modelisation](notebooks/03_modelisation.ipynb) | Quel modèle ? | naïfs < régression linéaire < LightGBM ; choix sur la validation, pas sur le test |
+| [04_tuning_overfitting](notebooks/04_tuning_overfitting.ipynb) | Comment régler sans sur-apprendre ? | `TimeSeriesSplit`, grille loggée dans MLflow, courbes train / validation, early stopping → modèle le plus régularisé |
+| [05_analyse_erreurs](notebooks/05_analyse_erreurs.ipynb) | Où le modèle se trompe-t-il ? | jours fériés et lendemains → piste d'amélioration n°1 |
+| [06_drift](notebooks/06_drift.ipynb) | Quand réentraîner ? | référence saisonnière (même période N-1) ; seuil PSI calibré sur l'historique |
+
+### Choix clés
+
+- **Pas de `lag_1`** : la veille, la consommation de demain 17 h 30 est inconnue. Tous les lags font au moins 24 h, la journée se prédit d'un coup.
+- **Découpage temporel** : test = 3 derniers mois (données RTE temps réel), validation = mois précédent. Aucun mélange aléatoire.
+- **Références naïves conservées** : un modèle qui ne bat pas « demain = aujourd'hui » n'a pas d'intérêt.
+- **Régression linéaire** avec calendrier one-hot : modèle simple et interprétable, point de comparaison honnête.
+- **Contrôle du sur-apprentissage** : RMSE train / validation / test loggées pour chaque modèle, validation croisée temporelle, early stopping, `min_child_samples` élevé.
+- **Champion / challenger** : un nouveau modèle ne remplace la production que s'il fait mieux sur le même jeu de test.
+
+### Résultats (test : 23/06 → 23/09/2026)
+
+| Modèle | RMSE train | RMSE validation | RMSE test | MAE test | R² test |
+|---|---|---|---|---|---|
+| Naïf 24 h | 4 239 | 3 619 | 3 437 | 2 307 | 0,66 |
+| Naïf 7 jours | 5 092 | 3 116 | 2 791 | 2 130 | 0,78 |
+| Régression linéaire | 2 701 | 2 047 | 1 872 | 1 404 | 0,90 |
+| **LightGBM** | 1 778 | 1 462 | **1 460** | **1 094** | **0,94** |
+
+La RMSE train est plus élevée que la validation car le train contient tous les hivers (consommation et erreurs absolues plus fortes) ; la comparaison à périodes égales se fait par validation croisée (notebook 04).
+
+La v2 entraînée par ce pipeline (RMSE 1 460) n'a **pas** été promue : la v1 en production fait 1 421 sur le même test. La règle champion / challenger a joué son rôle.
+
+![Comparaison des modèles](reports/model_comparison.png)
+![Prévision sur le test](reports/forecast_test.png)
+![Monitoring](reports/drift_weekly_mae.png)
 
 ## Structure
 
 ```text
-app.py                        Application Streamlit
-src/prepare_data.py           Préparation des séries nationale et régionales
-src/features.py               Variables calendaires et lags
-src/train.py                  Entraînement LightGBM + baseline, log MLflow
-tests/                        Tests pytest
-exemples/historique_7_jours.csv  Historique d'exemple utilisé par l'app
-notebooks/                    EDA, features et comparaison de modèles
-dvc.yaml                      Pipeline DVC (préparation puis entraînement)
-requirements.txt              Dépendances de l'application (Streamlit Cloud)
-requirements-dev.txt          Dépendances de développement
-scripts/start_mlflow.ps1      Serveur MLflow local
+app.py                     Application Streamlit (prévision, performance, monitoring)
+params.yaml                Paramètres (découpage, LightGBM, seuils de monitoring)
+dvc.yaml / dvc.lock        Pipeline DVC : prepare_data → fetch_recent → train → evaluate
+src/config.py              Chemins, connexion MLflow, tags de version
+src/prepare_data.py        Fichier brut RTE → séries nationale et régionales
+src/data.py                API RTE temps réel, chargement, découpage temporel
+src/features.py            Calendrier (heure de Paris) et lags
+src/models.py              Modèles naïfs, régression linéaire, LightGBM, métriques
+src/train.py               Entraînement des candidats → @staging
+src/evaluate.py            @staging vs @production sur le test
+src/promote.py             Promotion champion / challenger → @production
+src/monitor.py             Dérive des données et du modèle
+notebooks/                 Démarche data science (01 à 06)
+reports/                   Métriques et graphiques du dernier passage
+tests/                     Tests pytest
+.github/workflows/         ci.yml, train.yml, monitoring.yml
 ```
 
-## Installation
+## Utilisation
+
+### Installation
 
 ```powershell
 python -m venv .venv
@@ -46,9 +101,7 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 ```
 
-## Connexion DagsHub
-
-Le remote DVC `dagshub` est déjà déclaré dans `.dvc/config`. Les identifiants restent en local (jamais commités) :
+### Connexion DagsHub
 
 ```powershell
 dvc remote modify --local dagshub user adem.debbahi
@@ -59,51 +112,54 @@ $env:MLFLOW_TRACKING_USERNAME = "adem.debbahi"
 $env:MLFLOW_TRACKING_PASSWORD = "TON_TOKEN_DAGSHUB"
 ```
 
-Sans `MLFLOW_TRACKING_URI`, le tracking se fait en local dans `mlflow.db`.
+Sans `MLFLOW_TRACKING_URI`, tout est enregistré en local dans `mlflow.db`.
 
-## Mettre à jour le modèle
+### Pipeline
 
 ```powershell
-dvc pull            # récupère les données depuis DagsHub
-dvc repro           # prépare les données puis entraîne (log dans MLflow DagsHub)
-dvc push            # envoie les données sur DagsHub
-git add dvc.lock metrics.json
-git commit -m "Nouveau modèle"
-git push            # Streamlit Cloud se met à jour
+dvc pull              # données depuis DagsHub
+dvc repro             # données RTE récentes → entraînement → évaluation
+python -m src.promote # promotion si meilleur que la production
+python -m src.monitor # contrôle de dérive
+dvc push
 ```
 
-`src.train` enregistre deux runs : `baseline` (persistance 24 h) et `production` (LightGBM avec early stopping). Les métriques (RMSE, MAE, R2) sont aussi écrites dans `metrics.json` (`dvc metrics show`).
+Pour tester d'autres hyperparamètres : modifier `params.yaml`, puis `dvc repro` et `dvc params diff`.
 
-## Streamlit Cloud
+### GitHub Actions
 
-Sélectionner ce dépôt GitHub et le fichier `app.py`, puis ajouter dans **Settings > Secrets** :
+Ajouter dans **Settings > Secrets and variables > Actions** :
+
+- `DAGSHUB_USERNAME` : `adem.debbahi`
+- `DAGSHUB_TOKEN` : token DagsHub
+
+| Workflow | Déclenchement | Jobs |
+|---|---|---|
+| `ci.yml` | chaque push / PR | lint (ruff) → tests (pytest) → graphe DVC |
+| `train.yml` | manuel, changement de `params.yaml` ou `src/`, ou appelé par le monitoring | données → entraînement → évaluation → promotion |
+| `monitoring.yml` | chaque lundi à 6 h UTC, ou manuel | dérive → réentraînement si nécessaire |
+
+Chaque workflow écrit un résumé (tableaux de métriques) sur la page du run.
+
+### Streamlit Cloud
+
+Fichier `app.py`, secrets dans **Settings > Secrets** :
 
 ```toml
 MLFLOW_TRACKING_URI = "https://dagshub.com/adem.debbahi/conso_energie_prediction.mlflow"
 MLFLOW_TRACKING_USERNAME = "adem.debbahi"
 MLFLOW_TRACKING_PASSWORD = "TON_TOKEN_DAGSHUB"
-MLFLOW_EXPERIMENT_NAME = "conso_energie_day_ahead"
 ```
 
-L'application charge le dernier run `stage=production` et propose deux modes :
+L'application charge `models:/conso_energie_day_ahead@production` et propose :
 
-- **Prévision rapide** : une date, une heure et trois curseurs (consommation 24 h, 48 h et 7 jours avant) pour prédire une demi-heure ;
-- **Prévoir demain** : les 48 demi-heures de demain à partir d'un CSV `timestamp,consommation_mw` couvrant les 7 derniers jours ; sans fichier, `exemples/historique_7_jours.csv` est utilisé.
+- **Prévision rapide** : une demi-heure à partir de trois curseurs ;
+- **Prévoir demain** : 48 demi-heures à partir des données RTE récentes, d'un CSV ou de l'exemple ;
+- **Performance modèle** : registre, comparaison train / validation / test, diagnostics de chaque version ;
+- **Monitoring drift** : dernier contrôle de dérive et historique.
 
-Pour lancer l'app en local : `streamlit run app.py`.
+## Pistes d'amélioration
 
-## Notebooks
-
-1. `01_eda_preparation_consommation.ipynb` : contrôle qualité des données ;
-2. `02_features_split_temporel.ipynb` : lags et séparation temporelle ;
-3. `03_entrainement_mlflow.ipynb` : comparaison baseline / LightGBM.
-
-Les notebooks servent à l'exploration. Les entrées de référence sont `python -m src.prepare_data` et `python -m src.train`.
-
-## GitHub Actions
-
-`.github/workflows/ci.yml` s'exécute à chaque `push` et `pull_request` : installation des dépendances, tests pytest et vérification du graphe DVC.
-
-## Limites actuelles
-
-Ce MVP prévoit la consommation France entière. Les données régionales sont exportées dans `data/eco2mix_regional.csv` pour une future prévision par région. La météo et les jours fériés pourront améliorer le modèle, à condition de respecter leur disponibilité au moment de la prévision.
+1. Variable jour férié / pont (principale source d'erreur, notebook 05).
+2. Température prévue pour le lendemain (Open-Meteo), en utilisant la prévision et non l'observation.
+3. Prévision par région à partir de `data/eco2mix_regional.csv`.

@@ -1,0 +1,19 @@
+# Paramètres suivis par DVC (`dvc params diff`) et enregistrés dans MLflow.
+
+split:
+  test_months: 3        # dernière période, jamais vue pendant l'entraînement
+  validation_months: 1  # sélection du modèle et early stopping
+
+lightgbm:               # valeurs choisies dans notebooks/04_tuning_overfitting.ipynb
+  learning_rate: 0.05
+  n_estimators: 2000
+  num_leaves: 15
+  min_child_samples: 100
+  colsample_bytree: 0.9
+  reg_lambda: 0.0
+  early_stopping_rounds: 50
+
+monitoring:
+  weeks: 4                    # fenêtre récente analysée
+  psi_threshold: 1.4          # 90e percentile historique (notebooks/06_drift.ipynb)
+  mae_increase_threshold: 0.2 # MAE récente > MAE de test + 20 % : dérive du modèle
