@@ -51,16 +51,25 @@ def load_production_model():
     if experiment is None:
         return None, f"Expérience MLflow introuvable : {experiment_name}"
 
-    runs = mlflow.search_runs(
+    client = mlflow.MlflowClient()
+    runs = client.search_runs(
         experiment_ids=[experiment.experiment_id],
         filter_string="tags.stage = 'production'",
-        order_by=["start_time DESC"],
-        max_results=1,
+        order_by=["attributes.start_time DESC"],
+        max_results=20,
     )
     if runs.empty:
         return None, "Aucun run production trouvé dans MLflow."
 
-    run_id = runs.iloc[0]["run_id"]
+    run_id = None
+    for run in runs:
+        artifacts = client.list_artifacts(run.info.run_id)
+        if any(artifact.path == "model" for artifact in artifacts):
+            run_id = run.info.run_id
+            break
+    if run_id is None:
+        return None, "Les runs production existent, mais aucun ne contient l'artefact model. Relancez src.train avec MLflow DagsHub configuré."
+
     try:
         model = mlflow.pyfunc.load_model(f"runs:/{run_id}/model")
     except Exception as error:
