@@ -24,12 +24,33 @@ flowchart LR
 | Étape | Outil | Où le voir |
 |---|---|---|
 | Versionnage des données | DVC (historique) + instantané des données récentes loggé dans MLflow | `dvc.lock`, onglet *Artifacts* du run `training` |
-| Suivi des expériences | MLflow : run parent `training`, un run enfant par modèle | DagsHub → Experiments |
+| Suivi des expériences | MLflow : 3 expériences (entraînement, tuning, monitoring), un run enfant par modèle | DagsHub → Experiments |
 | Registre de modèles | alias `@staging` / `@production`, tags `data_version`, `git_commit`, `val_rmse`, `test_rmse` | DagsHub → Models |
 | Paramètres | `params.yaml`, suivi par DVC (`dvc params diff`) | |
 | CI | lint → tests → pipeline DVC | GitHub → Actions → *CI* |
 | Entraînement continu | données → entraînement → évaluation → promotion | GitHub → Actions → *Entraînement* |
 | Monitoring | PSI, KS, MAE hebdomadaire ; déclenche l'entraînement en cas de dérive | GitHub → Actions → *Monitoring*, onglet *Monitoring drift* de l'app |
+
+## Lire MLflow sur DagsHub
+
+Trois expériences séparées, pour que les graphiques de comparaison ne mélangent pas des métriques sans rapport :
+
+| Expérience | Contenu | Nom des runs |
+|---|---|---|
+| `conso_energie_day_ahead` | entraînements : un run parent + un run enfant par modèle candidat | `entrainement 24/09 10:00 → v4 lightgbm (@production depuis le 24/09/2026)` |
+| `conso_energie_tuning` | grille d'hyperparamètres du notebook 04 | `grille num_leaves x min_child_samples · 24/09` |
+| `conso_energie_monitoring` | un run par contrôle de dérive | `monitoring 23/09 · v1 · stable` |
+
+Où trouver chaque information :
+
+- **Version des données** : colonnes `data_version` (hash DVC de l'historique, identique à `dvc.lock`) et `recent_data_md5` (instantané RTE) dans le tableau des runs ; `dvc.lock` et `data/recent.csv` dans les artefacts du run parent.
+- **Code** : colonne `git_commit`.
+- **Description** : en haut de chaque run et de chaque version de modèle (tableau des modèles, données, périodes, décision).
+- **Staging / production** : onglet *Models* (alias), et tag `registry` sur le run du modèle (`v4 @production depuis…`, `v3 refusé : …`).
+- **Courbe d'apprentissage interactive** : métriques `courbe_rmse_train` / `courbe_rmse_validation` du run `lightgbm` (onglet *Metrics*).
+- **Graphiques** : onglet *Artifacts* du run (`learning_curve.png`, `feature_importance.png`, `forecast_test.png`, `error_by_hour.png`).
+
+Astuce : dans le tableau des runs, le bouton *Columns* permet d'afficher les tags `registry` et `model_type`.
 
 ## Démarche data science
 

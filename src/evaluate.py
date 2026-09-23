@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import mlflow
 import pandas as pd
 
-from src.config import MODEL_NAME, REPORTS_DIR, configure_mlflow, load_params, write_summary
+from src.config import FIGURE_OPTIONS, MODEL_NAME, REPORTS_DIR, configure_mlflow, load_params, write_summary
 from src.data import load_dataset, temporal_split
 from src.features import FEATURE_COLUMNS
 from src.models import score
@@ -62,8 +62,8 @@ def evaluate() -> dict:
     figures = {"forecast_test.png": forecast_figure(test), "error_by_hour.png": error_by_hour_figure(test)}
     with mlflow.start_run(run_id=staging_run_id):
         for name, figure in figures.items():
-            mlflow.log_figure(figure, name)
-            figure.savefig(REPORTS_DIR / name, bbox_inches="tight")
+            mlflow.log_figure(figure, name, save_kwargs=FIGURE_OPTIONS)
+            figure.savefig(REPORTS_DIR / name, **FIGURE_OPTIONS)
     mlflow.MlflowClient().set_model_version_tag(
         MODEL_NAME, evaluation["staging"]["version"], "test_rmse", f"{evaluation['staging']['rmse']:.1f}"
     )

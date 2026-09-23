@@ -8,7 +8,7 @@ import mlflow
 import pandas as pd
 import streamlit as st
 
-from src.config import EXPERIMENT_NAME, MODEL_NAME
+from src.config import EXPERIMENT_NAME, MODEL_NAME, MONITORING_EXPERIMENT
 from src.data import fetch_rte
 from src.features import FEATURE_COLUMNS, build_features
 
@@ -34,13 +34,13 @@ def get_setting(name: str, default: str | None = None) -> str | None:
         return default
 
 
-def connect_mlflow() -> str | None:
-    """Connect to MLflow (DagsHub, or local mlflow.db) and return the experiment id."""
+def connect_mlflow() -> bool:
+    """Connect to MLflow (DagsHub, or local mlflow.db)."""
     tracking_uri = get_setting("MLFLOW_TRACKING_URI")
     if not tracking_uri and LOCAL_MLFLOW_DB.exists():
         tracking_uri = f"sqlite:///{LOCAL_MLFLOW_DB.as_posix()}"
     if not tracking_uri:
-        return None
+        return False
 
     for name in ["MLFLOW_TRACKING_USERNAME", "MLFLOW_TRACKING_PASSWORD"]:
         value = get_setting(name)
@@ -48,13 +48,12 @@ def connect_mlflow() -> str | None:
             os.environ[name] = value
 
     mlflow.set_tracking_uri(tracking_uri)
-    experiment = mlflow.get_experiment_by_name(get_setting("MLFLOW_EXPERIMENT_NAME", EXPERIMENT_NAME))
-    return experiment.experiment_id if experiment else None
+    return True
 
 
 @st.cache_resource
 def load_production_model():
-    if connect_mlflow() is None:
+    if not connect_mlflow():
         return None, None, "MLflow non configuré : vérifiez MLFLOW_TRACKING_URI dans les secrets Streamlit."
     try:
         version = mlflow.MlflowClient().get_model_version_by_alias(MODEL_NAME, "production")
@@ -65,12 +64,12 @@ def load_production_model():
 
 
 @st.cache_data(ttl=600)
-def search_runs(filter_string: str, max_results: int = 100) -> pd.DataFrame:
-    experiment_id = connect_mlflow()
-    if experiment_id is None:
+def search_runs(experiment_name: str, filter_string: str = "", max_results: int = 100) -> pd.DataFrame:
+    experiment = mlflow.get_experiment_by_name(experiment_name) if connect_mlflow() else None
+    if experiment is None:
         return pd.DataFrame()
     return mlflow.search_runs(
-        experiment_ids=[experiment_id], filter_string=filter_string,
+        experiment_ids=[experiment.experiment_id], filter_string=filter_string,
         order_by=["attributes.start_time DESC"], max_results=max_results,
     )
 
@@ -88,6 +87,7 @@ def model_versions() -> pd.DataFrame:
             "modèle": version.tags.get("model_type", ""),
             "RMSE validation": version.tags.get("val_rmse", ""),
             "RMSE test": version.tags.get("test_rmse", ""),
+            "décision": version.tags.get("decision", ""),
             "données": version.tags.get("data_version", "")[:8],
             "commit": version.tags.get("git_commit", ""),
             "créée le": pd.to_datetime(version.creation_timestamp, unit="ms"),
@@ -213,12 +213,12 @@ with tab_performance:
     st.subheader("Registre de modèles")
     st.dataframe(model_versions(), width="stretch", hide_index=True)
 
-    trainings = search_runs("tags.stage = 'training'", max_results=1)
+    trainings = search_runs(EXPERIMENT_NAME, "tags.stage = 'training'", max_results=1)
     if not trainings.empty:
         training = trainings.iloc[0]
         st.subheader(f"Dernier entraînement ({training['start_time']:%d/%m/%Y %H:%M})")
         st.caption("Écart train / validation / test : un grand écart signale du sur-apprentissage.")
-        candidates = search_runs(f"tags.mlflow.parentRunId = '{training['run_id']}'")
+        candidates = search_runs(EXPERIMENT_NAME, f"tags.mlflow.parentRunId = '{training['run_id']}'")
         rmse = candidates.set_index("tags.model_type")[["metrics.train_rmse", "metrics.val_rmse", "metrics.test_rmse"]]
         rmse.columns = ["train", "validation", "test"]
         st.bar_chart(rmse, stack=False)
@@ -235,12 +235,12 @@ with tab_performance:
     )
 
 with tab_monitoring:
-    monitorings = search_runs("tags.stage = 'monitoring'", max_results=20)
+    monitorings = search_runs(MONITORING_EXPERIMENT, "tags.stage = 'monitoring'", max_results=20)
     if monitorings.empty:
         st.warning("Aucun monitoring enregistré : lancez python -m src.monitor.")
     else:
         last = monitorings.iloc[0]
-        st.subheader(f"Dernier contrôle : {last['tags.window']} (modèle v{last['tags.model_version']})")
+        st.subheader(f"Dernier contrôle : {last['params.window']} (modèle v{last['params.model_version']})")
         col_psi, col_mae, col_ref = st.columns(3)
         col_psi.metric("PSI consommation (vs l'an dernier)", f"{last['metrics.psi']:.3f}")
         col_mae.metric("MAE dernière semaine", f"{last['metrics.mae_last_week']:.0f} MW")

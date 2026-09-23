@@ -15,17 +15,21 @@ RECENT_PATH = DATA_DIR / "recent.csv"     # données temps réel récupérées s
 REPORTS_DIR = ROOT / "reports"
 
 MODEL_NAME = "conso_energie_day_ahead"
-EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT_NAME", "conso_energie_day_ahead")
+# Une expérience MLflow par usage : les graphiques de comparaison restent lisibles.
+EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT_NAME", "conso_energie_day_ahead")  # entraînements
+TUNING_EXPERIMENT = "conso_energie_tuning"
+MONITORING_EXPERIMENT = "conso_energie_monitoring"
+FIGURE_OPTIONS = {"dpi": 150, "bbox_inches": "tight"}
 
 
 def load_params() -> dict:
     return yaml.safe_load((ROOT / "params.yaml").read_text(encoding="utf-8"))
 
 
-def configure_mlflow() -> None:
+def configure_mlflow(experiment: str = EXPERIMENT_NAME) -> None:
     """Use DagsHub when MLFLOW_TRACKING_URI is set, otherwise a local mlflow.db."""
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", f"sqlite:///{(ROOT / 'mlflow.db').as_posix()}"))
-    mlflow.set_experiment(EXPERIMENT_NAME)
+    mlflow.set_experiment(experiment)
 
 
 def git_commit() -> str:
@@ -37,12 +41,12 @@ def git_commit() -> str:
         return "unknown"
 
 
-def data_tags() -> dict[str, str]:
-    """Data versions: DVC hash of the consolidated history + hash of the recent snapshot."""
+def lineage() -> dict[str, str]:
+    """What a model was built from: code commit, DVC hash of the history, hash of the recent snapshot."""
     lock = yaml.safe_load((ROOT / "dvc.lock").read_text(encoding="utf-8"))
     history = next(out["md5"] for out in lock["stages"]["prepare_data"]["outs"] if out["path"] == "data/eco2mix.csv")
     recent = hashlib.md5(RECENT_PATH.read_bytes()).hexdigest() if RECENT_PATH.exists() else "none"
-    return {"data_version": history, "recent_data_md5": recent}
+    return {"git_commit": git_commit(), "data_version": history, "recent_data_md5": recent}
 
 
 def write_summary(markdown: str) -> None:

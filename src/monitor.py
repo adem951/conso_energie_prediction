@@ -10,7 +10,16 @@ import numpy as np
 import pandas as pd
 from scipy.stats import ks_2samp
 
-from src.config import MODEL_NAME, REPORTS_DIR, configure_mlflow, load_params, write_output, write_summary
+from src.config import (
+    FIGURE_OPTIONS,
+    MODEL_NAME,
+    MONITORING_EXPERIMENT,
+    REPORTS_DIR,
+    configure_mlflow,
+    load_params,
+    write_output,
+    write_summary,
+)
 from src.data import load_dataset
 from src.features import FEATURE_COLUMNS
 
@@ -49,7 +58,7 @@ def weekly_mae_figure(weekly_mae: pd.Series, threshold: float) -> plt.Figure:
 
 def monitor() -> bool:
     params = load_params()["monitoring"]
-    configure_mlflow()
+    configure_mlflow(MONITORING_EXPERIMENT)
     data = load_dataset()
 
     # La consommation est saisonnière : on compare aux mêmes semaines un an plus tôt,
@@ -91,16 +100,8 @@ def monitor() -> bool:
         "drift_distribution.png": distribution_figure(reference["consommation_mw"], current["consommation_mw"]),
         "drift_weekly_mae.png": weekly_mae_figure(weekly_mae, threshold),
     }
-    with mlflow.start_run(run_name="monitoring"):
-        mlflow.set_tags({"stage": "monitoring", "model_version": version.version, "window": result["window"]})
-        mlflow.log_metrics({key: float(value) for key, value in result.items() if key not in ["window", "model_version"]})
-        for name, figure in figures.items():
-            mlflow.log_figure(figure, name)
-            figure.savefig(REPORTS_DIR / name, bbox_inches="tight")
-    (REPORTS_DIR / "monitoring.json").write_text(json.dumps(result, indent=2))
-
     data_status, model_status = drift_status(result["data_drift"]), drift_status(result["model_drift"])
-    write_summary(
+    report = (
         f"## Monitoring de @production v{version.version} ({result['window']})\n\n"
         "| Contrôle | Valeur | Seuil | Statut |\n|---|---|---|---|\n"
         f"| PSI consommation (vs l'an dernier) | {psi_value:.3f} | {params['psi_threshold']} | {data_status} |\n"
@@ -108,6 +109,20 @@ def monitor() -> bool:
         f"| MAE dernière semaine | {result['mae_last_week']:.0f} MW | {threshold:.0f} MW | {model_status} |\n\n"
         f"Réentraînement nécessaire : **{'oui' if retrain else 'non'}**\n"
     )
+
+    run_name = f"monitoring {end:%d/%m} · v{version.version} · {'dérive' if retrain else 'stable'}"
+    with mlflow.start_run(run_name=run_name):
+        mlflow.set_tags({"stage": "monitoring", "mlflow.note.content": report})
+        mlflow.log_params({
+            "model_version": version.version, "window": result["window"],
+            "psi_threshold": params["psi_threshold"], "mae_threshold": round(threshold, 1),
+        })
+        mlflow.log_metrics({key: float(value) for key, value in result.items() if key not in ["window", "model_version"]})
+        for name, figure in figures.items():
+            mlflow.log_figure(figure, name, save_kwargs=FIGURE_OPTIONS)
+            figure.savefig(REPORTS_DIR / name, **FIGURE_OPTIONS)
+    (REPORTS_DIR / "monitoring.json").write_text(json.dumps(result, indent=2))
+    write_summary(report)
     write_output("retrain", str(retrain).lower())
     return retrain
 
