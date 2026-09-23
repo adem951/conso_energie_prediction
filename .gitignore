@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+mlflow.db
+mlruns/
+*.png
+*.pyc
+.dvc/cache/
+.dvc/tmp/
+data/*.csv
+notebooks/ci_output/
+notebooks/executed/

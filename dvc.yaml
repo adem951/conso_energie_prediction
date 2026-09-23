@@ -1,0 +1,9 @@
+stages:
+  prepare_data:
+    cmd: jupyter nbconvert --to notebook --execute notebooks/01_eda_preparation_consommation.ipynb --output-dir notebooks/executed
+    deps:
+      - data/eco2mix-regional-cons-def.csv
+      - notebooks/01_eda_preparation_consommation.ipynb
+    outs:
+      - data/eco2mix.csv
+      - data/eco2mix_regional.csv

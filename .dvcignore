@@ -1,0 +1,4 @@
+.venv/
+mlruns/
+*.db
+*.ipynb_checkpoints
